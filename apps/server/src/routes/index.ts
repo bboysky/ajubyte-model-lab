@@ -30,6 +30,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { URL } from 'node:url';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { selectLatestResultsByKey, selectLatestScenarioResults } from '../resultSelection.js';
+import { extractHallucinationLabel } from './hallucinationStats.js';
 
 // The database is mutable and may retain bundled development/history rows from
 // an older import. Official runs are therefore selected against the released
@@ -2729,6 +2730,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const labelDistribution: Record<string, number> = {
         correct: 0, correct_refusal: 0, partial: 0,
         hallucination: 0, wrong_refusal: 0, accepted_false_premise: 0,
+        unclassified: 0,
       };
       let answerableCount = 0;
       let wrongRefusalCount = 0;
@@ -2739,11 +2741,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         const answerability = answerabilityMap.get(r.scenarioId) || 'ANSWERABLE';
         if (answerability === 'ANSWERABLE') answerableCount++;
 
-        let label = 'hallucination';
+        let label: ReturnType<typeof extractHallucinationLabel> = 'unclassified';
         try {
           const ev = JSON.parse(r.evidence) as string[];
-          const found = ev.find((e) => e.startsWith('HALLUCINATION_LABEL:'));
-          if (found) label = found.split(':')[1];
+          label = extractHallucinationLabel(ev);
         } catch { /* ignore */ }
 
         labelDistribution[label] = (labelDistribution[label] || 0) + 1;
