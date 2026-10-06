@@ -1,0 +1,21 @@
+{
+  "version": "1.31.1-ajubyte-public-1",
+  "count": 615,
+  "validCount": 615,
+  "defaultRunCount": 615,
+  "dimensions": {
+    "safety_authority": 50,
+    "program": 150,
+    "tool_cli_workflow": 56,
+    "instruction_following": 42,
+    "reasoning_math": 48,
+    "cli_deep_tasks": 56,
+    "structured_output": 28,
+    "agent_workflow": 45,
+    "hallucination_resistance": 84,
+    "data_extraction": 56
+  },
+  "note": "This public pack excludes six non-public scenarios.",
+  "withheldScenarioCount": 6
+}
+

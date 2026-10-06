@@ -1,0 +1,29 @@
+{
+  "name": "@zxbench/core",
+  "version": "0.2.2",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zxbench/types": "workspace:*",
+    "@zxbench/utils": "workspace:*",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "typescript": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

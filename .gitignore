@@ -1,0 +1,97 @@
+# ===== 依赖 =====
+node_modules/
+.pnpm-store/
+
+# ===== 构建产物 =====
+dist/
+dist_bak_*/
+*.tsbuildinfo
+.turbo/
+
+# ===== 环境变量（密钥不入库）=====
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ===== 数据库（本地评测数据不入库）=====
+apps/data/
+*.db
+*.db-wal
+*.db-shm
+*.db.bak-*
+*.sqlite
+*.sqlite3
+
+# ===== 评测产物 =====
+data/evaluations/
+
+# ===== 日志 =====
+*.log
+logs/
+server-*.log
+server-*.out
+server-*.err
+
+# ===== 临时/scratch 文件 =====
+tmp-*
+.tmp-*
+*.tmp
+nul
+
+# ===== 生成的分析产物 =====
+config-gaps.json
+scenario-health.json
+# 本地模型对比报告、逐题结果、媒体资源与 Remotion 渲染工程不入库
+reports/zxbench-final-comparison-2026-09-04/
+
+# 原项目内部学习、审计与评测设计资料暂不公开
+docs/
+data/gold/
+REGRESSION-REPORT.md
+CHANGELOG.md
+zxbench-webui-evaluation-spec.md
+zxbench-webui-testsuite-spec.md
+data/scenarios/execution-review-manifest.json
+scripts/audit-project-repair-sample.mjs
+
+# 原项目内未发布的题目试验夹具与维护脚本
+packages/core/src/evaluationLab/fixtures/
+packages/core/src/evaluationLab/he001*.ts
+packages/core/src/evaluationLab/challengeHoldout.ts
+packages/core/src/evaluationLab/challengeHoldout.test.ts
+packages/core/src/evaluationLab/verificationReadiness.ts
+packages/core/src/evaluationLab/verificationReadiness.test.ts
+packages/core/src/evaluationLab/isolatedJudgeFixtures.ts
+packages/core/src/evaluationLab/isolatedJudgeFixtures.test.ts
+packages/core/src/evaluationLab/apiControlStream.ts
+packages/core/src/evaluationLab/apiControlStream.test.ts
+packages/core/src/evaluationLab/judgeStreamOnce.ts
+packages/core/src/evaluationLab/judgeStreamOnce.test.ts
+packages/core/src/scripts/
+apps/server/src/scripts/
+/scripts/
+!/scripts/
+/scripts/*
+!/scripts/seed-benchmark.mjs
+!/scripts/test-containers.mjs
+dump-project.mjs
+verify-one.mjs
+verify-project.mjs
+
+# Local evaluation traces and process state can be very large or machine-specific.
+**/response.sse
+**/wire.sse
+**/server_pid.txt
+**/__pycache__/
+*.pyc
+
+# ===== Agent / 本地工具 =====
+.workbuddy/
+
+# ===== 编辑器 / OS =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+coverage/

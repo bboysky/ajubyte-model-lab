@@ -1,0 +1,65 @@
+import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import type { Scenario } from '@zxbench/types';
+import { buildChallengeExtension } from '../evaluationLab/challengeExtension.js';
+import { challengeExtensionEvaluator } from './challengeExtension.js';
+import { registerEvaluator } from './index.js';
+import { orchestrateEvaluation } from '../orchestrator.js';
+import { checkScenarioEligibility } from '../contracts/eligibility.js';
+import { hashScenarioShort } from '../contracts/canonicalize.js';
+import { getJudgeWeights } from '../scoring.js';
+import { runTieredJudge, runJudgeEnsemble } from '../judge/index.js';
+
+vi.mock('../judge/index.js', () => ({ runTieredJudge: vi.fn(), runJudgeEnsemble: vi.fn(), computeJudgeScore: vi.fn() }));
+const bank = JSON.parse(readFileSync('data/scenarios/benchmark.json', 'utf8')) as Scenario[];
+const pack = buildChallengeExtension();
+const metadata = { finishReason: 'stop', truncated: false, incomplete: false, containsCodeBlock: false,
+  containsFinalConclusion: true, outputLength: 100, outputTokens: 100, inputTokens: 100, maxTokens: 90000 } as any;
+const find = (id: string) => bank.find(s => s.id === id)!;
+registerEvaluator(challengeExtensionEvaluator);
+
+describe('bank 1.31.1 challenge integration and restored formal scope', () => {
+  it('freezes the exact source, counts, hashes and default eligibility', () => {
+    expect(pack.hash).toBe('636709fc08a7f5e68f3af5d3f059d6551f4470853a8a51332c965ed4cdc48e6b');
+    expect(pack.cases).toHaveLength(20);
+    expect(bank).toHaveLength(615);
+    for (const item of pack.cases) {
+      const scenario = find(item.id);
+      expect(scenario.scenarioHash, item.id).toBe(hashScenarioShort(scenario));
+      expect(checkScenarioEligibility(scenario).eligible, item.id).toBe(true);
+      expect(getJudgeWeights(scenario.dimension, scenario.grader).judge).toBe(0);
+    }
+    const projectRepairs = bank.filter(s => s.grader === 'project_repair');
+    expect(projectRepairs).toHaveLength(20);
+    expect(projectRepairs.every(s => !(s.requirements as any)?.developmentShadow)).toBe(true);
+    expect(projectRepairs.every(s => checkScenarioEligibility(s).eligible)).toBe(true);
+  });
+  it.each(pack.cases)('replays gold and rejects wrong/incomplete answers: $id', async item => {
+    const scenario = find(item.id), gold = JSON.stringify(item.reference);
+    const evaluate = (output: string, meta = metadata) => challengeExtensionEvaluator.evaluate(scenario, output, meta);
+    expect(await evaluate(gold)).toMatchObject({ totalScore: 100, environmentError: false, humanReviewRequired: false });
+    expect((await evaluate('{}')).totalScore).toBe(0);
+    const wrong = Object.fromEntries(Object.keys(item.reference).map(key => [key, 'WRONG']));
+    expect((await evaluate(JSON.stringify(wrong))).totalScore).toBe(0);
+    expect((await evaluate(gold, { ...metadata, truncated: true, finishReason: 'length' })).totalScore).toBe(0);
+  });
+  it.each(pack.cases)('runs through the real orchestrator without Judge even when enabled: $id', async item => {
+    const output = JSON.stringify(item.reference);
+    const result = await orchestrateEvaluation({ scenario: find(item.id),
+      modelConfig: { id: 'offline', name: 'offline', provider: 'local', baseUrl: 'http://unused', defaultParams: {} },
+      modelParams: { maxTokens: 90000 }, evalConfig: { judgeEnabled: true },
+      judgeOptions: { localModel: { id: 'must-not-call' } },
+      savedCandidate: { response: { content: output, reasoningContent: '', finishReason: 'stop', latencyMs: 1, usage: { inputTokens: 100, outputTokens: 100 } }, metadata },
+    } as any);
+    expect(result.totalScore, JSON.stringify(result.evidence)).toBe(100);
+    expect(runTieredJudge).not.toHaveBeenCalled();
+    expect(runJudgeEnsemble).not.toHaveBeenCalled();
+  });
+  it('rejects stale source hashes or changed prompts, and separates unparseable probability output', async () => {
+    const probability = pack.cases.find(c => c.kind === 'probability')!, scenario = find(probability.id);
+    expect(await challengeExtensionEvaluator.evaluate({ ...scenario, promptTemplate: 'changed' }, '{}', metadata)).toMatchObject({ environmentError: true });
+    expect(await challengeExtensionEvaluator.evaluate({ ...scenario, requirements: { ...(scenario.requirements as any), sourcePackHash: 'stale' } }, '{}', metadata)).toMatchObject({ environmentError: true });
+    expect(await challengeExtensionEvaluator.evaluate(scenario, 'not JSON', metadata)).toMatchObject({ environmentError: true, formatParseSuccess: false, axisCoverage: 0 });
+    expect(await challengeExtensionEvaluator.evaluate(scenario, '说明\n```json\n' + JSON.stringify(probability.reference) + '\n```', metadata)).toMatchObject({ totalScore: 100 });
+  });
+});

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+  width="512" height="512" viewBox="0 0 512 512">
+  
+  
+  <g transform="translate(38 38) scale(2.18)">
+    <path d="M38 18H105C149 18 172 38 172 70C172 90 161 105 142 113C166 120 181 137 181 161C181 198 154 218 105 218H38Z"
+      fill="#FF6433" transform="translate(0 -18) scale(.88)"/>
+    <path d="M77 49H111C133 49 145 59 145 75C145 92 133 102 110 102H77Z
+             M77 121H112C137 121 151 132 151 150C151 169 137 180 111 180H77Z"
+      fill="none" stroke="#F7F2E9" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M84 76L110 53M84 76L132 76M84 76L111 99M84 149L111 125M84 149L137 149M84 149L111 176"
+      fill="none" stroke="#F7F2E9" stroke-width="5" stroke-linecap="round"/>
+    <rect x="18" y="143" width="14" height="14" fill="#FF6433"/>
+    <rect x="1" y="161" width="14" height="14" fill="#FF6433"/>
+    <rect x="20" y="179" width="10" height="10" fill="#FF6433"/>
+  </g>
+</svg>
