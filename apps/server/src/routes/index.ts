@@ -31,6 +31,7 @@ import { URL } from 'node:url';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { selectLatestResultsByKey, selectLatestScenarioResults } from '../resultSelection.js';
 import { extractHallucinationLabel } from './hallucinationStats.js';
+import { isPublicRun } from '../publicResults.js';
 
 // The database is mutable and may retain bundled development/history rows from
 // an older import. Official runs are therefore selected against the released
@@ -984,7 +985,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
   // ===== 健康检查 =====
   app.get('/api/health', async () => {
-    return { status: 'ok', version: '0.2.1', buildTime: process.env.BUILD_TIME || 'dev' };
+    return { status: 'ok', version: '0.2.2', buildTime: process.env.BUILD_TIME || 'dev' };
   });
 
   // ===== 版本信息（部署验证用） =====
@@ -1165,25 +1166,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ===== 评测运行 =====
-  app.get('/api/runs', async () => {
+  app.get('/api/runs', async (request) => {
     const runs = await prisma.evalRun.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { modelConfig: true },
+      include: { modelConfig: true, results: { select: { scenarioId: true } } },
     });
+    const visibleRuns = request.zxbenchRole === 'viewer'
+      ? runs.filter(run => isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID))
+      : runs;
     return {
       success: true,
-      data: runs.map((run) => ({
+      data: visibleRuns.map((run) => ({
         ...run,
+        results: undefined,
         config: JSON.parse(run.config),
-        manifest: run.manifest ? JSON.parse(run.manifest) : null,
+        manifest: request.zxbenchRole === 'viewer' ? publicManifest(run.manifest) : (run.manifest ? JSON.parse(run.manifest) : null),
         summary: run.summary ? JSON.parse(run.summary) : null,
-        modelConfig: deserializeModel(run.modelConfig),
+        modelConfig: deserializeModel(run.modelConfig, request.zxbenchRole === 'viewer'),
         _count: undefined,
       })),
     };
   });
 
-  app.get('/api/runs/:id', async (request) => {
+  app.get('/api/runs/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const run = await prisma.evalRun.findUnique({
       where: { id },
@@ -1193,14 +1198,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (!run) return { success: false, error: 'Run not found' };
+    if (request.zxbenchRole === 'viewer' && !isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID)) {
+      return reply.code(404).send({ success: false, error: 'Run not found' });
+    }
     return {
       success: true,
       data: {
         ...run,
         config: JSON.parse(run.config),
-        manifest: run.manifest ? JSON.parse(run.manifest) : null,
+        manifest: request.zxbenchRole === 'viewer' ? publicManifest(run.manifest) : (run.manifest ? JSON.parse(run.manifest) : null),
         summary: run.summary ? JSON.parse(run.summary) : null,
-        modelConfig: deserializeModel(run.modelConfig),
+        modelConfig: deserializeModel(run.modelConfig, request.zxbenchRole === 'viewer'),
         results: run.results.map(deserializeResult),
         referenceAnswerWarnings: referenceAnswerWarnings(run.results),
       },
@@ -1250,8 +1258,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // 获取同组所有运行ID
     const groupName = run.groupName;
     const siblingRuns = groupName
-      ? await prisma.evalRun.findMany({ where: { groupName }, select: { id: true, status: true } })
-      : [{ id: run.id, status: run.status }];
+      ? await prisma.evalRun.findMany({ where: { groupName }, select: { id: true, status: true, manifest: true } })
+      : [{ id: run.id, status: run.status, manifest: run.manifest }];
     const runIds = siblingRuns.map((r) => r.id);
 
     // 重试、恢复和 Judge-only 补评产生历史行；最后完成的行才是题级主结果。
@@ -1259,6 +1267,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { evalRunId: { in: runIds } },
       orderBy: { startedAt: 'asc' },
     });
+    if (request.zxbenchRole === 'viewer' && siblingRuns.some(sibling =>
+      !isPublicRun(sibling.manifest, allResults.filter(result => result.evalRunId === sibling.id).map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID))) {
+      return { success: false, error: 'Run not found' };
+    }
 
     const results = selectLatestScenarioResults(allResults);
 
@@ -1283,7 +1295,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         groupName,
         totalRuns: siblingRuns.length,
         totalResults: deserialized.length,
-        modelConfig: deserializeModel(run.modelConfig),
+        modelConfig: deserializeModel(run.modelConfig, request.zxbenchRole === 'viewer'),
         config: JSON.parse(run.config),
         summary: run.summary ? JSON.parse(run.summary) : null,
         results: deserialized,
@@ -2244,10 +2256,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ===== 统计 =====
-  app.get('/api/stats', async () => {
-    const totalRuns = await prisma.evalRun.count();
-    const completedRuns = await prisma.evalRun.count({ where: { status: 'completed' } });
-    const totalResults = await prisma.scenarioResult.count();
+  app.get('/api/stats', async (request) => {
+    let totalRuns: number;
+    let completedRuns: number;
+    let totalResults: number;
+    if (request.zxbenchRole === 'viewer') {
+      const runs = await prisma.evalRun.findMany({ select: {
+        status: true, manifest: true, results: { select: { scenarioId: true } },
+      } });
+      const visibleRuns = runs.filter(run => isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID));
+      totalRuns = visibleRuns.length;
+      completedRuns = visibleRuns.filter(run => run.status === 'completed').length;
+      totalResults = visibleRuns.reduce((total, run) => total + run.results.length, 0);
+    } else {
+      totalRuns = await prisma.evalRun.count();
+      completedRuns = await prisma.evalRun.count({ where: { status: 'completed' } });
+      totalResults = await prisma.scenarioResult.count();
+    }
     const dimensions = await prisma.scenarioDefinition.groupBy({
       by: ['dimension'],
       where: { status: 'valid', id: { in: [...RELEASE_BENCHMARK_BY_ID.keys()] } },
@@ -2274,12 +2299,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       include: { modelConfig: true, results: { orderBy: { startedAt: 'asc' } } },
     });
     if (!run) return reply.status(404).send({ success: false, error: 'Not found' });
+    if (request.zxbenchRole === 'viewer' && !isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID)) {
+      return reply.status(404).send({ success: false, error: 'Not found' });
+    }
 
     const exportData = {
       ...run,
       modelConfig: deserializeModelMasked(run.modelConfig),
       config: JSON.parse(run.config),
-      manifest: run.manifest ? JSON.parse(run.manifest) : null,
+      manifest: request.zxbenchRole === 'viewer' ? publicManifest(run.manifest) : (run.manifest ? JSON.parse(run.manifest) : null),
       summary: run.summary ? JSON.parse(run.summary) : null,
       // GPT5.6 P0-7: 导出时脱敏处理
       results: run.results.map((r) => maskSensitiveData(deserializeResult(r))),
@@ -2588,6 +2616,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         environmentError: true,
       },
     });
+
+    if (request.zxbenchRole === 'viewer' && !isPublicRun(run.manifest, allResults.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID)) {
+      return reply.status(404).send({ success: false, error: 'Not found' });
+    }
 
     const results = selectLatestScenarioResults(allResults);
 
@@ -3089,9 +3121,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const run = await prisma.evalRun.findUnique({
       where: { id },
-      select: { reportContent: true, name: true, modelConfig: { select: { name: true } } },
+      select: {
+        reportContent: true, name: true, manifest: true,
+        modelConfig: { select: { name: true } },
+        results: { select: { scenarioId: true } },
+      },
     });
     if (!run) return reply.status(404).send({ success: false, error: 'Run not found' });
+    if (request.zxbenchRole === 'viewer' && !isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID)) {
+      return reply.status(404).send({ success: false, error: 'Run not found' });
+    }
     if (!run.reportContent) {
       return reply.status(404).send({ success: false, error: '请先生成 AI 报告后再下载' });
     }
@@ -3293,13 +3332,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/leaderboard', async (request) => {
     // scope：latest（默认，单次最新 run 综合分）| best（跨 run 按题取最优，可选）
     const scope = ((request.query as { scope?: string }).scope) === 'best' ? 'best' : 'latest';
-    const candidateRuns = await prisma.evalRun.findMany({
+    const queriedRuns = await prisma.evalRun.findMany({
       where: { status: 'completed' },
       include: { modelConfig: true, results: { select: {
         scenarioId: true, scenarioVersion: true, graderVersion: true,
       } } },
       orderBy: { createdAt: 'desc' },
     });
+    const candidateRuns = request.zxbenchRole === 'viewer'
+      ? queriedRuns.filter(run => isPublicRun(run.manifest, run.results.map(result => result.scenarioId), RELEASE_BENCHMARK_BY_ID))
+      : queriedRuns;
     // Reject incompatible runs before both cached-summary and best-of-run paths.
     // Original results remain available in history; do not turn gold errors into model failures.
     const { eligible: completedRuns, excluded: excludedRuns } = partitionReferenceAnswerRuns(candidateRuns);
@@ -4679,13 +4721,26 @@ function getDimProgressSnapshot(dimMap: Map<string, { total: number; completed: 
 
 // ===== 反序列化辅助 =====
 
-function deserializeModel(row: { id: string; name: string; provider: string; baseUrl: string; apiKey: string | null; defaultParams: string; modelType: string; reasoningModel: boolean; displayName: string | null; createdAt: Date; updatedAt: Date }) {
+function deserializeModel(row: { id: string; name: string; provider: string; baseUrl: string; apiKey: string | null; defaultParams: string; modelType: string; reasoningModel: boolean; displayName: string | null; createdAt: Date; updatedAt: Date }, maskApiKey = false) {
   return {
     ...row,
-    apiKey: row.apiKey ? decryptApiKey(row.apiKey) : null,
+    apiKey: row.apiKey ? (maskApiKey ? '********' : decryptApiKey(row.apiKey)) : null,
     defaultParams: JSON.parse(row.defaultParams),
     reasoningModel: row.reasoningModel,
   };
+}
+
+/** Public history retains the audit hash while omitting embedded benchmark questions and hidden tests. */
+function publicManifest(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const manifest = JSON.parse(raw) as Record<string, unknown> & { benchmarkPack?: { hash?: string } };
+    const benchmarkPackHash = manifest.benchmarkPack?.hash;
+    delete manifest.benchmarkPack;
+    return benchmarkPackHash ? { ...manifest, benchmarkPackHash } : manifest;
+  } catch {
+    return null;
+  }
 }
 
 /** 反序列化模型配置（脱敏版：API 返回用） */

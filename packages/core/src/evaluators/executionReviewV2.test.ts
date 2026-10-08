@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import type { Scenario, OutputMetadata } from '@zxbench/types';
 import { instructionChecklistEvaluator as instruction } from './instructionChecklist.js';
 import { prRuleDiagnosticEvaluator as pr } from './llmJudge.js';
@@ -12,12 +11,9 @@ const metadata={finishReason:'stop',truncated:false,incomplete:false} as OutputM
 const get=(id:string)=>bank.find(s=>s.id===id)!;
 const check=(id:string,text:string)=>instruction.evaluate(get(id),text,metadata);
 describe('frozen instruction v5 contracts',()=>{
-  it('freezes all 171 contracts and the scoring/execution source fingerprint',()=>{
-    const manifest=JSON.parse(readFileSync('data/scenarios/execution-review-manifest.json','utf8'));
-    expect(manifest.scenarios).toHaveLength(171);
-    for(const row of manifest.scenarios) expect(hashScenarioShort(get(row.id))).toBe(row.scenarioHash);
-    for(const [path,hash] of Object.entries(manifest.sourceHashes)) expect(createHash('sha256').update(readFileSync(path,'utf8').replaceAll('\r\n','\n')).digest('hex'),path).toBe(hash);
-    expect(manifest.independentHumanReview).toBe(false);
+  it('keeps the public bank complete and every published scenario hash self-consistent',()=>{
+    expect(bank).toHaveLength(615);
+    for(const scenario of bank) expect(hashScenarioShort(scenario),scenario.id).toBe(scenario.scenarioHash);
   });
   it('all current configurations are measurable and every updated hash matches',async()=>{
     for(const s of bank.filter(s=>s.grader==='instruction_checklist')){

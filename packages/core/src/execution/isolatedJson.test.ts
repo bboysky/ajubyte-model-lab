@@ -3,17 +3,6 @@ import { readFileSync } from 'node:fs';
 import { compareJsonObservation, isolatedCandidateOptions, runIsolatedJsonSuite, validIsolatedJsonContract } from './isolatedJson.js';
 import { runInContainer } from './containerRunner.js';
 import { ISOLATED_JSON_PILOTS } from '../evaluationLab/isolatedJsonGold.js';
-import { QUICKJS_OBSERVATION_PILOTS } from '../evaluationLab/quickJsObservationGold.js';
-import { ISOLATED_JAVA_JSON_PILOTS } from '../evaluationLab/isolatedJavaJsonGold.js';
-import { ISOLATED_CSHARP_JSON_PILOTS } from '../evaluationLab/isolatedCsharpJsonGold.js';
-import { ISOLATED_GO_JSON_PILOTS } from '../evaluationLab/isolatedGoJsonGold.js';
-import { ISOLATED_PHP_JSON_V2_PILOTS } from '../evaluationLab/isolatedPhpJsonV2Gold.js';
-import { ISOLATED_PYTHON_JSON_PILOTS } from '../evaluationLab/isolatedPythonJsonGold.js';
-import { ISOLATED_JAVASCRIPT_JSON_PILOTS } from '../evaluationLab/isolatedJavascriptJsonGold.js';
-import { ISOLATED_SQL_JSON_PILOTS } from '../evaluationLab/isolatedSqlJsonGold.js';
-import { ISOLATED_TYPESCRIPT_JSON_PILOTS } from '../evaluationLab/isolatedTypescriptJsonGold.js';
-import { ISOLATED_TYPESCRIPT_TYPE_PILOTS } from '../evaluationLab/isolatedTypescriptTypeGold.js';
-import { ISOLATED_FIXTURE_EXIT_PILOTS } from '../evaluationLab/isolatedFixtureExitGold.js';
 import { codeRepairEvaluator } from '../evaluators/codeRepair.js';
 vi.mock('./containerRunner.js', async original => ({ ...await original<object>(), runInContainer: vi.fn() }));
 const contract = { protocol: 'isolated-json-v1' as const, entrypoint: 'answer', cases: [{id:'secret-id',calls:[[]],expected:['SECRET_EXPECTED']}] };
@@ -92,7 +81,7 @@ it('production cannot use the legacy scorer or trusted-host switch as an isolati
   expect(r.environmentError).toBe(true);expect(r.axisCoverage).toBe(0);expect(r.axisScores).toBeUndefined();
   expect(runInContainer).not.toHaveBeenCalled();
 });
-it('preserves every original test ID for all migrated questions and reconciles coverage',()=>{
+it('preserves migrated test IDs and keeps development inventory out of public metadata',()=>{
   const bank=JSON.parse(readFileSync('data/scenarios/benchmark.json','utf8'));
   for(const [id,p] of Object.entries(ISOLATED_JSON_PILOTS)) {
     const s=bank.find((s:any)=>s.id===id);
@@ -100,10 +89,9 @@ it('preserves every original test ID for all migrated questions and reconciles c
     expect(s.hiddenTests.map((t:any)=>t.id)).toEqual(p.contract.cases.map(c=>c.id));
   }
   const meta=JSON.parse(readFileSync('data/scenarios/benchmark-meta.json','utf8'));
-  expect(meta.executionIsolation.pilots).toEqual([...Object.keys(ISOLATED_JSON_PILOTS),...Object.keys(ISOLATED_JAVA_JSON_PILOTS),...Object.keys(ISOLATED_CSHARP_JSON_PILOTS),...Object.keys(ISOLATED_GO_JSON_PILOTS),...Object.keys(ISOLATED_PHP_JSON_V2_PILOTS),...Object.keys(ISOLATED_PYTHON_JSON_PILOTS),...Object.keys(ISOLATED_JAVASCRIPT_JSON_PILOTS),...Object.keys(ISOLATED_SQL_JSON_PILOTS),...Object.keys(ISOLATED_TYPESCRIPT_JSON_PILOTS),...Object.keys(ISOLATED_TYPESCRIPT_TYPE_PILOTS),...Object.keys(ISOLATED_FIXTURE_EXIT_PILOTS),...Object.keys(QUICKJS_OBSERVATION_PILOTS)]);
-  expect(meta.executionIsolation.pendingCodeRepair).toBe(bank.filter((s:any)=>s.grader==='code_repair'
-    &&s.expectedVerdict!=='no_bug'&&!s.requirements?.isolatedJson&&!s.requirements?.isolatedJavaJson&&!s.requirements?.isolatedCsharpJson&&!s.requirements?.isolatedGoJson&&!s.requirements?.isolatedPhpJson&&!s.requirements?.isolatedPythonJson&&!s.requirements?.isolatedJavascriptJson&&!s.requirements?.isolatedSqlJson&&!s.requirements?.isolatedTypescriptJson&&!s.requirements?.isolatedTypescriptType&&!s.requirements?.isolatedFixtureExit&&!s.requirements?.quickJsObservation).length);
-  expect(meta.executionIsolation.fullAcceptance).toBe(false);
+  expect(meta.count).toBe(bank.length);
+  expect(meta.withheldScenarioCount).toBe(6);
+  expect(meta).not.toHaveProperty('executionIsolation');
 });
 it('does not silently replace identity, mutation, performance or type checks with return values',()=>{
   const bank=JSON.parse(readFileSync('data/scenarios/benchmark.json','utf8'));

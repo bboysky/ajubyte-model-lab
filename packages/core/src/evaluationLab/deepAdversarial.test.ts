@@ -32,8 +32,9 @@ describe('stage 1: bounded red-team checks and honest release gates', () => {
     expect(report.open).toEqual([]);
     expect(report.releaseReady).toBe(true);
     expect(report.reliabilityGateSatisfied).toBe(true);
-    expect(report.challengeSupplementReady).toBe(true);
-    expect(report.scorePublicationReady).toBe(true);
+    expect(report.challengeSupplementReady).toBe(false);
+    expect(report.scorePublicationReady).toBe(false);
+    expect(report.nextStageBlockers).toContain('challenge questions require completed three-family discrimination screening before score publication');
     expect(report.independentHumanGold).toBe(false);
     expect(callModel).not.toHaveBeenCalled();
   });

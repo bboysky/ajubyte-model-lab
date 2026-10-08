@@ -5,12 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { loadBenchmarkImportScope } from '../../../scripts/benchmark-import-scope.mjs';
 
 describe('released benchmark import scope', () => {
-  it('imports only the canonical bank and identifies accidental bundled history', () => {
+  it('imports the canonical public bank without bundling other scenario arrays', () => {
     const scope = loadBenchmarkImportScope(path.resolve('data/scenarios'));
-    expect(scope.scenarios).toHaveLength(621);
+    expect(scope.scenarios).toHaveLength(615);
     expect(scope.scenarios.filter((scenario: any) => scenario.dimension === 'program')).toHaveLength(150);
-    expect([...scope.accidentalBundledIds].length).toBeGreaterThan(0);
-    expect([...scope.accidentalBundledIds].some((id) => String(id).startsWith('CR2-'))).toBe(true);
-    expect([...scope.accidentalBundledIds].some((id) => scope.benchmarkIds.has(id))).toBe(false);
+    expect([...scope.accidentalBundledIds]).toHaveLength(0);
   });
 });

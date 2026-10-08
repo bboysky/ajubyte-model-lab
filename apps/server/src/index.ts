@@ -10,6 +10,7 @@ import fastifyWebSocket from '@fastify/websocket';
 import { PrismaClient } from '@prisma/client';
 import { registerRoutes } from './routes/index.js';
 import { registerWebSocket } from './ws/index.js';
+import { loadAccessControlConfig, registerAccessControl } from './accessControl.js';
 import { challengeExtensionEvaluator } from '@zxbench/core';
 import { registerEvaluator, bugFindingEvaluator, codeRepairEvaluator, projectRepairEvaluator, structuredOutputEvaluator, dataExtractionEvaluator, exactAnswerLineEvaluator, instructionChecklistEvaluator, canaryAuthorityEvaluator, toolCallTraceEvaluator, agentTraceEvaluator, cliCommandEvaluator, hallucinationResistanceEvaluator, sandboxEvaluator, llmJudgeEvaluator, prExecutableEvidenceEvaluator } from '@zxbench/core';
 import path from 'node:path';
@@ -62,12 +63,15 @@ async function main() {
   await enableWAL();
   const app = Fastify({
     logger: {
+      redact: ['req.headers.authorization', 'req.headers.cookie'],
       transport: {
         target: 'pino-pretty',
         options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
       },
     },
   });
+
+  registerAccessControl(app, loadAccessControlConfig());
 
   // GPT5.6 P1-9: CORS 默认拒绝跨域，仅允许同源
   const corsOrigin = process.env.ZXBENCH_CORS_ORIGIN || false;
