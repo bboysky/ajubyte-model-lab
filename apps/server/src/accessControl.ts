@@ -80,7 +80,8 @@ export function registerAccessControl(app: FastifyInstance, config: AccessContro
     const path = request.url.split('?')[0];
     const isAdminLogin = request.method === 'GET' && path === '/admin-login';
     const isPublicPage = !path.startsWith('/api/');
-    if (READ_METHODS.has(request.method) && !isAdminLogin && (isPublicPage || publicReadPath(path))) {
+    const isWebSocket = path === '/ws';
+    if (READ_METHODS.has(request.method) && !isAdminLogin && !isWebSocket && (isPublicPage || publicReadPath(path))) {
       request.zxbenchRole = 'viewer';
       return;
     }

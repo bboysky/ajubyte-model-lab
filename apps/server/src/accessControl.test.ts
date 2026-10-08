@@ -35,7 +35,7 @@ describe('server access roles', () => {
   it('keeps model, scenario, calibration and live-progress APIs behind admin login', async () => {
     const app = Fastify(); apps.push(app);
     registerAccessControl(app, config);
-    for (const path of ['/api/models', '/api/scenarios', '/api/calibration', '/api/runs/123/progress']) {
+    for (const path of ['/api/models', '/api/scenarios', '/api/calibration', '/api/runs/123/progress', '/ws']) {
       app.get(path, async () => ({ success: true }));
     }
     await app.ready();
