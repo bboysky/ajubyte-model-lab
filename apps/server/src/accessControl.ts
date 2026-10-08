@@ -81,18 +81,19 @@ export function registerAccessControl(app: FastifyInstance, config: AccessContro
     const isAdminLogin = request.method === 'GET' && path === '/admin-login';
     const isPublicPage = !path.startsWith('/api/');
     const isWebSocket = path === '/ws';
+    if (isAdmin(request.headers.authorization, config)) {
+      request.zxbenchRole = 'admin';
+      if (!READ_METHODS.has(request.method) && config.publicOrigin && request.headers.origin !== config.publicOrigin) {
+        return reply.code(403).send({ success: false, error: 'Write requests must come from the configured site origin' });
+      }
+      return;
+    }
     if (READ_METHODS.has(request.method) && !isAdminLogin && !isWebSocket && (isPublicPage || publicReadPath(path))) {
       request.zxbenchRole = 'viewer';
       return;
     }
-    if (!isAdmin(request.headers.authorization, config)) {
-      reply.header('WWW-Authenticate', 'Basic realm="aubyte-model-lab", charset="UTF-8"');
-      return reply.code(401).send({ success: false, error: 'Authentication required' });
-    }
-    request.zxbenchRole = 'admin';
-    if (!READ_METHODS.has(request.method) && config.publicOrigin && request.headers.origin !== config.publicOrigin) {
-      return reply.code(403).send({ success: false, error: 'Write requests must come from the configured site origin' });
-    }
+    reply.header('WWW-Authenticate', 'Basic realm="aubyte-model-lab", charset="UTF-8"');
+    return reply.code(401).send({ success: false, error: 'Authentication required' });
   });
   app.get('/admin-login', async (_request, reply) => reply.redirect('/'));
 }

@@ -28,6 +28,11 @@ describe('server access roles', () => {
     const read = await app.inject({ method: 'GET', url: '/api/runs' });
     expect(read.statusCode).toBe(200);
     expect(read.json()).toEqual({ role: 'viewer' });
+    const adminRead = await app.inject({ method: 'GET', url: '/api/runs', headers: {
+      authorization: basic('owner', 'owner-secret'),
+    } });
+    expect(adminRead.statusCode).toBe(200);
+    expect(adminRead.json()).toEqual({ role: 'admin' });
     const write = await app.inject({ method: 'POST', url: '/api/runs' });
     expect(write.statusCode).toBe(401);
   });
